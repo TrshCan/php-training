@@ -20,11 +20,11 @@ if (!empty($_POST['submit'])) {
         $userId = $userModel->insertUser($_POST);
     }
 
-    // ✅ Generate token and save in Redis (1 hour expiry)
+    // Generate token and save in Redis (1 hour expiry)
     $token = bin2hex(random_bytes(32));
     $redis->setex("auth_token:$token", 3600, $userId);
 
-    // ✅ Send token + user info to client via localStorage
+    // Send token + user info to client via localStorage
     echo "<script>
         localStorage.setItem('auth_token', '$token');
         localStorage.setItem('userId', '$userId');

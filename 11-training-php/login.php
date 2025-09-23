@@ -1,48 +1,50 @@
 <?php
 require_once 'models/UserModel.php';
-require_once 'configs/env.php';
+
+// Load .env (you can use vlucas/phpdotenv or simple getenv if your env is already loaded)
+$redisHost = getenv('REDIS_HOST') ?: 'redis-15536.c340.ap-northeast-2-1.ec2.redns.redis-cloud.com';
+$redisPort = getenv('REDIS_PORT') ?: 15536;
+$redisPass = getenv('REDIS_PASS') ?: 'Zv2RPw3F12R1jOZX1FAXqDflCbUnvAkj';
 
 $redis = new Redis();
 
-try {
-    // Try Redis Cloud first
-    $redis->connect(
-        'tls://' . getenv('REDIS_HOST'),
-        getenv('REDIS_PORT')
-    );
-    $redis->auth(getenv('REDIS_PASS'));
-} catch (Exception $e) {
-    // Fallback to local Redis
-    $redis->connect(getenv('REDIS_LOCAL_HOST'), getenv('REDIS_LOCAL_PORT'));
+// Connect to Redis Cloud using TLS
+if (!$redis->connect($redisHost, $redisPort, 2.5, null, 0, 0, ['ssl' => ['verify_peer' => false]])) {
+    die("Failed to connect to Redis Cloud");
+}
+
+// Authenticate
+if (!$redis->auth(['default', $redisPass])) {
+    die("Redis authentication failed");
 }
 
 $userModel = new UserModel();
 $message = "";
 
-if (!empty($_POST['submit'])) {
-    $username = $_POST['username'];
-    $password = $_POST['password'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    $username = trim($_POST['username'] ?? '');
+    $password = trim($_POST['password'] ?? '');
 
     $user = $userModel->auth($username, $password);
 
     if ($user) {
-        // Generate random token
+        // Generate secure token
         $token = bin2hex(random_bytes(32)); 
         $userId = $user[0]['id'];
 
-        // Save to Redis with expiration (1h)
+        // Save token in Redis Cloud with 1 hour expiry
         $redis->setex("auth_token:$token", 3600, $userId);
 
-        // Store in browser localStorage
+        // Push token + user info into localStorage on client side
         echo "<script>
             localStorage.setItem('auth_token', '$token');
             localStorage.setItem('userId', '$userId');
             localStorage.setItem('username', '" . addslashes($username) . "');
-            window.location.href = 'list_users.php';
+            window.location.href = 'list_users.php?token=$token';
         </script>";
         exit;
     } else {
-        $message = "Login failed";
+        $message = "Invalid username or password.";
     }
 }
 ?>
@@ -50,10 +52,10 @@ if (!empty($_POST['submit'])) {
 <html>
 <head>
     <title>User Login</title>
-    <?php include 'views/meta.php' ?>
+    <?php include 'views/meta.php'; ?>
 </head>
 <body>
-<?php include 'views/header.php' ?>
+<?php include 'views/header.php'; ?>
 
 <div class="container">
     <div id="loginbox" style="margin-top:50px;" 
@@ -88,13 +90,15 @@ if (!empty($_POST['submit'])) {
 
                     <div class="margin-bottom-25 input-group">
                         <div class="col-sm-12 controls">
-                            <button type="submit" name="submit" value="submit" class="btn btn-primary">Login</button>
+                            <button type="submit" name="submit" value="submit" class="btn btn-primary">
+                                Login
+                            </button>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <div class="col-md-12 control">
-                            Don't have an account?
+                            Don’t have an account?
                             <a href="form_user.php">Sign Up Here</a>
                         </div>
                     </div>

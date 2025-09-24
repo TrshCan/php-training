@@ -1,112 +1,87 @@
 <?php
+// Start the session
+session_start();
+
 require_once 'models/UserModel.php';
-
-// Load .env (you can use vlucas/phpdotenv or simple getenv if your env is already loaded)
-$redisHost = getenv('REDIS_HOST') ?: 'redis-15536.c340.ap-northeast-2-1.ec2.redns.redis-cloud.com';
-$redisPort = getenv('REDIS_PORT') ?: 15536;
-$redisPass = getenv('REDIS_PASS') ?: 'Zv2RPw3F12R1jOZX1FAXqDflCbUnvAkj';
-
-$redis = new Redis();
-
-// Connect to Redis Cloud using TLS
-if (!$redis->connect($redisHost, $redisPort, 2.5, null, 0, 0, ['ssl' => ['verify_peer' => false]])) {
-    die("Failed to connect to Redis Cloud");
-}
-
-// Authenticate
-if (!$redis->auth(['default', $redisPass])) {
-    die("Redis authentication failed");
-}
-
 $userModel = new UserModel();
-$message = "";
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
-    $username = trim($_POST['username'] ?? '');
-    $password = trim($_POST['password'] ?? '');
 
-    $user = $userModel->auth($username, $password);
+if (!empty($_POST['submit'])) {
+    $users = [
+        'username' => $_POST['username'],
+        'password' => $_POST['password']
+    ];
+    $user = NULL;
+    if ($user = $userModel->auth($users['username'], $users['password'])) {
+        //Login successful
+        $_SESSION['id'] = $user[0]['id'];
 
-    if ($user) {
-        // Generate secure token
-        $token = bin2hex(random_bytes(32)); 
-        $userId = $user[0]['id'];
-
-        // Save token in Redis Cloud with 1 hour expiry
-        $redis->setex("auth_token:$token", 3600, $userId);
-
-        // Push token + user info into localStorage on client side
-        echo "<script>
-            localStorage.setItem('auth_token', '$token');
-            localStorage.setItem('userId', '$userId');
-            localStorage.setItem('username', '" . addslashes($username) . "');
-            window.location.href = 'list_users.php?token=$token';
-        </script>";
-        exit;
-    } else {
-        $message = "Invalid username or password.";
+        $_SESSION['message'] = 'Login successful';
+        header('location: list_users.php');
+    }else {
+        //Login failed
+        $_SESSION['message'] = 'Login failed';
     }
+
 }
+
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>User Login</title>
-    <?php include 'views/meta.php'; ?>
+    <title>User form</title>
+    <?php include 'views/meta.php' ?>
 </head>
 <body>
-<?php include 'views/header.php'; ?>
+<?php include 'views/header.php'?>
 
-<div class="container">
-    <div id="loginbox" style="margin-top:50px;" 
-         class="mainbox col-md-6 col-md-offset-3 col-sm-8 col-sm-offset-2">
-        <div class="panel panel-info">
-            <div class="panel-heading">
-                <div class="panel-title">Login</div>
-            </div>
+    <div class="container">
+        <div id="loginbox" style="margin-top:50px;" class="mainbox col-md-6 col-md-offset-3 col-sm-8 col-sm-offset-2">
+            <div class="panel panel-info" >
+                <div class="panel-heading">
+                    <div class="panel-title">Login</div>
+                    <div style="float:right; font-size: 80%; position: relative; top:-10px"><a href="#">Forgot password?</a></div>
+                </div>
 
-            <div style="padding-top:30px" class="panel-body">
-                <?php if (!empty($message)): ?>
-                    <div class="alert alert-danger"><?= htmlspecialchars($message) ?></div>
-                <?php endif; ?>
+                <div style="padding-top:30px" class="panel-body" >
+                    <form method="post" class="form-horizontal" role="form">
 
-                <form method="post" class="form-horizontal" role="form">
-                    <div class="margin-bottom-25 input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
-                        <input type="text" class="form-control"
-                               name="username" placeholder="username or email" required>
-                    </div>
-
-                    <div class="margin-bottom-25 input-group">
-                        <span class="input-group-addon"><i class="glyphicon glyphicon-lock"></i></span>
-                        <input type="password" class="form-control"
-                               name="password" placeholder="password" required>
-                    </div>
-
-                    <div class="margin-bottom-25">
-                        <input type="checkbox" name="remember" id="remember">
-                        <label for="remember"> Remember Me</label>
-                    </div>
-
-                    <div class="margin-bottom-25 input-group">
-                        <div class="col-sm-12 controls">
-                            <button type="submit" name="submit" value="submit" class="btn btn-primary">
-                                Login
-                            </button>
+                        <div class="margin-bottom-25 input-group">
+                            <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+                            <input id="login-username" type="text" class="form-control" name="username" value="" placeholder="username or email">
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <div class="col-md-12 control">
-                            Don’t have an account?
-                            <a href="form_user.php">Sign Up Here</a>
+                        <div class="margin-bottom-25 input-group">
+                            <span class="input-group-addon"><i class="glyphicon glyphicon-lock"></i></span>
+                            <input id="login-password" type="password" class="form-control" name="password" placeholder="password">
                         </div>
-                    </div>
-                </form>
+
+                        <div class="margin-bottom-25">
+                            <input type="checkbox" tabindex="3" class="" name="remember" id="remember">
+                            <label for="remember"> Remember Me</label>
+                        </div>
+
+                        <div class="margin-bottom-25 input-group">
+                            <!-- Button -->
+                            <div class="col-sm-12 controls">
+                                <button type="submit" name="submit" value="submit" class="btn btn-primary">Submit</button>
+                                <a id="btn-fblogin" href="#" class="btn btn-primary">Login with Facebook</a>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="col-md-12 control">
+                                    Don't have an account!
+                                    <a href="form_user.php">
+                                        Sign Up Here
+                                    </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
 </body>
 </html>

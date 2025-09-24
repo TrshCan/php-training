@@ -1,32 +1,23 @@
 <?php
+session_start();
 require_once 'models/UserModel.php';
-require_once 'models/RedisClient.php';
-
 $userModel = new UserModel();
-$redis = RedisClient::get();
 
-// Check token from query string
-$token = $_GET['token'] ?? null;
-if (!$token) {
-    die("Unauthorized: Missing token");
+// Only allow POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    die("Invalid request");
 }
 
-// Verify token in Redis
-$userId = $redis->get("auth_token:$token");
-if ($userId === false) {
-    var_dump($userId);
-    die("Unauthorized: Invalid or expired token");
+// Validate CSRF token
+if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    die("CSRF validation failed");
 }
 
-$id = $_GET['id'] ?? null;
-if ($userId == $id) {
-    die("Unauthorized: You cannot delete your own account");
-}
-// Proceed with delete
-if (!empty($id)) {
+$id = $_POST['id'] ?? null;
+
+if ($id) {
     $userModel->deleteUserById($id);
 }
 
-// Redirect back to list_users with token preserved
-header("Location: list_users.php?token=$token");
+header('Location: list_users.php');
 exit;

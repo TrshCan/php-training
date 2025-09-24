@@ -1,36 +1,35 @@
 <?php
+// Start the session
+session_start();
 require_once 'models/UserModel.php';
-require_once 'models/RedisClient.php';
-
 $userModel = new UserModel();
-$redis = RedisClient::get();
 
-$user = null;
-$_id = $_GET['id'] ?? null;
+// Generate CSRF token if not exists
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-if (!empty($_id)) {
-    $user = $userModel->findUserById($_id); // Editing existing user
+$user = null; // Add new user
+$_id = null;
+
+if (!empty($_GET['id'])) {
+    $_id = $_GET['id'];
+    $user = $userModel->findUserById($_id); // Update existing user
 }
 
 if (!empty($_POST['submit'])) {
-    if (!empty($_id)) {
-        $userModel->updateUser($_POST);
-        $userId = $_id;
-    } else {
-        $userId = $userModel->insertUser($_POST);
+    // Check CSRF token
+    if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("CSRF validation failed");
     }
 
-    // Generate token and save in Redis (1 hour expiry)
-    $token = bin2hex(random_bytes(32));
-    $redis->setex("auth_token:$token", 3600, $userId);
+    if (!empty($_id)) {
+        $userModel->updateUser($_POST);
+    } else {
+        $userModel->insertUser($_POST);
+    }
 
-    // Send token + user info to client via localStorage
-    echo "<script>
-        localStorage.setItem('auth_token', '$token');
-        localStorage.setItem('userId', '$userId');
-        localStorage.setItem('username', '" . addslashes($_POST['name']) . "');
-        window.location.href = 'list_users.php?token=$token';
-    </script>";
+    header('Location: list_users.php');
     exit;
 }
 ?>
@@ -38,36 +37,44 @@ if (!empty($_POST['submit'])) {
 <html>
 <head>
     <title>User form</title>
-    <?php include 'views/meta.php'; ?>
+    <?php include 'views/meta.php' ?>
 </head>
 <body>
-<?php include 'views/header.php'; ?>
-
-<div class="container">
-    <?php if ($user || !isset($_id)) { ?>
-        <div class="alert alert-warning" role="alert">
-            User form
-        </div>
-        <form method="POST">
-            <input type="hidden" name="id" value="<?php echo htmlspecialchars($_id ?? ''); ?>">
-            <div class="form-group">
-                <label for="name">Name</label>
-                <input class="form-control" name="name" placeholder="Name"
-                       value='<?php echo !empty($user[0]['name']) ? htmlspecialchars($user[0]['name']) : ""; ?>'>
+    <?php include 'views/header.php' ?>
+    <div class="container">
+        <?php if ($user || !isset($_id)) { ?>
+            <div class="alert alert-warning" role="alert">
+                User form
             </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" name="password" class="form-control" placeholder="Password">
+            <form method="POST">
+                <input type="hidden" name="id" value="<?php echo htmlspecialchars($_id ?? '') ?>">
+                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?>">
+
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input 
+                        class="form-control" 
+                        name="name" 
+                        placeholder="Name" 
+                        value="<?php echo !empty($user[0]['name']) ? htmlspecialchars($user[0]['name']) : '' ?>">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input 
+                        type="password" 
+                        name="password" 
+                        class="form-control" 
+                        placeholder="Password">
+                </div>
+
+                <button type="submit" name="submit" value="submit" class="btn btn-primary">Submit</button>
+            </form>
+        <?php } else { ?>
+            <div class="alert alert-success" role="alert">
+                User not found!
             </div>
-
-            <button type="submit" name="submit" value="submit" class="btn btn-primary">Submit</button>
-        </form>
-    <?php } else { ?>
-        <div class="alert alert-success" role="alert">
-            User not found!
-        </div>
-    <?php } ?>
-</div>
-
+        <?php } ?>
+    </div>
 </body>
 </html>

@@ -1,19 +1,12 @@
 <?php
-require_once 'models/UserModel.php';
-require_once 'models/RedisClient.php';
+session_start();
 
-$redis = RedisClient::get();
+require_once 'models/UserModel.php';
 $userModel = new UserModel();
 
-// Read token from GET param
-$token = $_GET['token'] ?? '';
-
-$currentUser = null;
-if ($token) {
-    $userId = $redis->get("auth_token:$token");
-    if ($userId) {
-        $currentUser = $userModel->findUserById($userId);
-    }
+// Generate CSRF token if not exists
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $params = [];
@@ -30,27 +23,13 @@ $users = $userModel->getUsers($params);
     <?php include 'views/meta.php' ?>
 </head>
 <body>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-        window.location.href = "login.php";
-    } else {
-        const url = new URL(window.location.href);
-        if (!url.searchParams.get("token")) {
-            url.searchParams.set("token", token);
-            window.location.href = url.toString();
-        }
-    }
-});
-</script>
-
-<?php if ($currentUser): ?>
     <?php include 'views/header.php' ?>
     <div class="container">
         <?php if (!empty($users)) { ?>
             <div class="alert alert-warning" role="alert">
-                List of users!
+                List of users! <br>
+                Hacker example: 
+                http://php.local/list_users.php?keyword=ASDF%25%22%3BTRUNCATE+banks%3B%23%23
             </div>
             <table class="table table-striped">
                 <thead>
@@ -70,9 +49,20 @@ document.addEventListener("DOMContentLoaded", () => {
                             <td><?= ($user['fullname']) ?></td>
                             <td><?= ($user['type']) ?></td>
                             <td>
-                                <a href="form_user.php?id=<?= urlencode($user['id']) ?>">✏️</a>
-                                <a href="view_user.php?token=<?= $token ?>&id=<?= urlencode($user['id']) ?>">👁️</a>
-                                <a href="delete_user.php?token=<?= $token ?>&id=<?= urlencode($user['id']) ?>">🗑️</a>
+                                <a href="form_user.php?id=<?= urlencode($user['id']) ?>">
+                                    <i class="fa fa-pencil-square-o" title="Update"></i>
+                                </a>
+                                <a href="view_user.php?id=<?= urlencode($user['id']) ?>">
+                                    <i class="fa fa-eye" title="View"></i>
+                                </a>
+                                <!-- Delete with CSRF protection -->
+                                <form method="POST" action="delete_user.php" style="display:inline;">
+                                    <input type="hidden" name="id" value="<?= ($user['id']) ?>">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <button type="submit" style="border:none;background:none;padding:0;cursor:pointer;">
+                                        <i class="fa fa-eraser" title="Delete"></i>
+                                    </button>
+                                </form>
                             </td>
                         </tr>
                     <?php } ?>
@@ -82,12 +72,5 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="alert alert-dark">No users found.</div>
         <?php } ?>
     </div>
-<?php else: ?>
-    <script>
-        // Token invalid → nuke and relog
-        localStorage.removeItem("auth_token");
-        window.location.href = "login.php";
-    </script>
-<?php endif; ?>
 </body>
 </html>

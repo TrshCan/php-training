@@ -15,6 +15,8 @@ if (!empty($_GET['keyword'])) {
 }
 
 $users = $userModel->getUsers($params);
+
+var_dump($_SESSION['csrf_token']);
 ?>
 <!DOCTYPE html>
 <html>

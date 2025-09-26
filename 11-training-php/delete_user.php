@@ -3,6 +3,8 @@ session_start();
 require_once 'models/UserModel.php';
 $userModel = new UserModel();
 
+var_dump($_POST['csrf_token']);
+
 // Only allow POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die("Invalid request");
